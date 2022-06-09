@@ -33,6 +33,7 @@ import { ComponentRegistry } from './component_registry';
 const register = jest.fn();
 const get = jest.fn();
 const componentType = ComponentRegistry.componentType;
+// test HELLO!!!!!!
 
 export const advancedSettingsMock = {
   createSetupContract() {
