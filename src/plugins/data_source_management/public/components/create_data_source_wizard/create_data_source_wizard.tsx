@@ -9,10 +9,14 @@ import {
 } from '@elastic/eui';
 import { IndexPatternAttributes } from 'src/plugins/data/public';
 import { IDataSource } from 'src/plugins/data_source_management/common/data_sources/types';
-import { context as contextType } from '../../../../opensearch_dashboards_react/public';
+import { DataSourceSavedObject } from 'src/plugins/data_sources/public/types';
+import {
+  context as contextType,
+  withOpenSearchDashboards,
+} from '../../../../opensearch_dashboards_react/public';
 
 import { DataSourceCreationConfig } from '../../service';
-import { DataSourceManagmentContextValue } from '../../types';
+import { DataSourceManagmentContext, DataSourceManagmentContextValue } from '../../types';
 import { getCreateBreadcrumbs } from '../breadsrumbs';
 import { Header } from './components/header';
 
@@ -24,6 +28,7 @@ interface CreateDataSourceWizardState {
   existingDataSources: string[];
   dataSourceName: string;
   endpoint: string;
+  savedDS?: DataSourceSavedObject;
 }
 
 export class CreateDataSourceWizard extends Component<
@@ -52,6 +57,7 @@ export class CreateDataSourceWizard extends Component<
   }
 
   async UNSAFE_componentWillMount() {
+    this.fetchSavedDataSources();
     this.fetchExistingDataSources();
     this.fetchExistingIndexPatterns();
     // this.fetchData();
@@ -89,13 +95,33 @@ export class CreateDataSourceWizard extends Component<
     this.setState({ existingDataSources });
   };
 
+  fetchSavedDataSources = async () => {
+    const { savedDataSourceLoader: savedDataSource } = this.context.services.dataSource;
+
+    const savedDS: DataSourceSavedObject = await savedDataSource.get();
+
+    this.setState({ savedDS });
+  };
+
   handleSubmit = () => {
-    this.context.services.savedObjects.client
-      .create('data-source', { title: this.state.dataSourceName, endpoint: this.state.endpoint })
-      .then((res: any) => {
-        // eslint-disable-next-line no-console
-        console.log(res);
-      });
+    console.log('SavedDataSource here hi!!!!');
+    const savedDataSource = this.state.savedDS!; // todo
+    savedDataSource.credientialsJSON = '{' + '  "type": "test",' + '  "id": 1' + '}';
+    savedDataSource.title = this.state.dataSourceName;
+    savedDataSource.endpoint = this.state.endpoint;
+    // console.log(JSON.stringify(savedDataSource));
+
+    savedDataSource.save({}).then((res: any) => {
+      // eslint-disable-next-line no-console
+      console.log(res);
+    });
+
+    // this.context.services.savedObjects.client
+    //   .create('data-source', { title: this.state.dataSourceName, endpoint: this.state.endpoint })
+    //   .then((res: any) => {
+    //     // eslint-disable-next-line no-console
+    //     console.log(res);
+    //   });
   };
 
   renderHeader() {

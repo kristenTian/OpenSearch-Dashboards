@@ -829,6 +829,7 @@ export class DashboardAppController {
      * @resolved {String} - The id of the doc
      */
     function save(saveOptions: SavedObjectSaveOpts): Promise<SaveResult> {
+      console.log('saving dashboard.... --1');
       return saveDashboard(angular.toJson, timefilter, dashboardStateManager, saveOptions)
         .then(function (id) {
           if (id) {
@@ -914,6 +915,8 @@ export class DashboardAppController {
         isTitleDuplicateConfirmed: boolean;
         onTitleDuplicate: () => void;
       }) => {
+        console.log('HI, saving dashboard right now....');
+
         dashboardStateManager.setTitle(newTitle);
         dashboardStateManager.setDescription(newDescription);
         dashboardStateManager.savedDashboard.copyOnSave = newCopyOnSave;
