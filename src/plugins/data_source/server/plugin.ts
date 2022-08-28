@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { first } from 'rxjs/operators';
+import { first, map } from 'rxjs/operators';
 import { OpenSearchClientError } from '@opensearch-project/opensearch/lib/errors';
+import { Observable } from 'rxjs';
 import { dataSource, credential, CredentialSavedObjectsClientWrapper } from './saved_objects';
 import { DataSourcePluginConfigType } from '../config';
 import {
@@ -15,18 +16,26 @@ import {
   Logger,
   IContextProvider,
   RequestHandler,
+  Auditor,
+  AuditorFactory,
+  OpenSearchDashboardsRequest,
+  LoggerContextConfigInput,
+  AppenderConfigType,
 } from '../../../../src/core/server';
 import { DataSourceService, DataSourceServiceSetup } from './data_source_service';
 import { DataSourcePluginSetup, DataSourcePluginStart } from './types';
 import { CryptographyClient } from './cryptography';
+import { ScopedAuditClient } from './audit/scopted_audit_client';
 
 export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourcePluginStart> {
   private readonly logger: Logger;
   private readonly dataSourceService: DataSourceService;
+  private readonly config$: Observable<DataSourcePluginConfigType>;
 
   constructor(private initializerContext: PluginInitializerContext<DataSourcePluginConfigType>) {
     this.logger = this.initializerContext.logger.get();
     this.dataSourceService = new DataSourceService(this.logger.get('data-source-service'));
+    this.config$ = this.initializerContext.config.create<DataSourcePluginConfigType>();
   }
 
   public async setup(core: CoreSetup) {
@@ -38,8 +47,7 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
     // Register data source saved object type
     core.savedObjects.registerType(dataSource);
 
-    const config$ = this.initializerContext.config.create<DataSourcePluginConfigType>();
-    const config: DataSourcePluginConfigType = await config$.pipe(first()).toPromise();
+    const config: DataSourcePluginConfigType = await this.config$.pipe(first()).toPromise();
 
     // Fetch configs used to create credential saved objects client wrapper
     const { wrappingKeyName, wrappingKeyNamespace, wrappingKey } = config.encryption;
@@ -63,10 +71,39 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
 
     const dataSourceService: DataSourceServiceSetup = await this.dataSourceService.setup(config);
 
+    core.logging.configure(
+      this.config$.pipe<LoggerContextConfigInput>(
+        map((dataSourceConfig) => ({
+          appenders: {
+            auditTrailAppender: this.getAppender(config),
+          },
+          loggers: [
+            {
+              context: 'audit',
+              level: 'info',
+              appenders: ['auditTrailAppender'],
+            },
+          ],
+        }))
+      )
+    );
+
+    const auditorFactory: AuditorFactory = {
+      asScoped: (request: OpenSearchDashboardsRequest) => {
+        return new ScopedAuditClient(request, this.logger.get('audit'));
+      },
+    };
+    core.auditTrail.register(auditorFactory);
+
     // Register data source plugin context to route handler context
     core.http.registerRouteHandlerContext(
       'dataSource',
-      this.createDataSourceRouteHandlerContext(dataSourceService, cryptographyClient, this.logger)
+      this.createDataSourceRouteHandlerContext(
+        dataSourceService,
+        cryptographyClient,
+        this.logger,
+        auditorFactory
+      )
     );
 
     return {};
@@ -84,9 +121,12 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
   private createDataSourceRouteHandlerContext = (
     dataSourceService: DataSourceServiceSetup,
     cryptographyClient: CryptographyClient,
-    logger: Logger
+    logger: Logger,
+    auditorFactory: AuditorFactory
   ): IContextProvider<RequestHandler<unknown, unknown, unknown>, 'dataSource'> => {
     return (context, req) => {
+      const auditor = auditorFactory.asScoped(req);
+
       return {
         opensearch: {
           getClient: (dataSourceId: string) => {
@@ -94,7 +134,8 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
               return dataSourceService.getDataSourceClient(
                 dataSourceId,
                 context.core.savedObjects.client,
-                cryptographyClient
+                cryptographyClient,
+                auditor
               );
             } catch (error: any) {
               logger.error(
@@ -107,4 +148,17 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
       };
     };
   };
+
+  private getAppender(config: DataSourcePluginConfigType): AppenderConfigType {
+    return (
+      config.audit.appender ?? {
+        kind: 'file',
+        layout: {
+          kind: 'pattern',
+          highlight: true,
+        },
+        path: '/tmp/log/opensearch-dashboards/data-source-audit.log',
+      }
+    );
+  }
 }

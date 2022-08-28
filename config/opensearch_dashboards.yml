@@ -108,7 +108,11 @@
 #pid.file: /var/run/opensearchDashboards.pid
 
 # Enables you to specify a file where OpenSearch Dashboards stores log output.
-#logging.dest: stdout
+logging.dest: /var/log/opensearch_dashboards.log
+
+data_source.audit.appender.kind: 'file'
+data_source.audit.appender.layout.kind: 'pattern'
+data_source.audit.appender.path: '/tmp/log/opensearch-dashboards/data-source-audit2.log'
 
 # Set the value of this setting to true to suppress all logging output.
 #logging.silent: false

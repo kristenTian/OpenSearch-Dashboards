@@ -3,7 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger, OpenSearchClient, SavedObjectsClientContract } from '../../../../src/core/server';
+import {
+  Auditor,
+  Logger,
+  OpenSearchClient,
+  SavedObjectsClientContract,
+} from '../../../../src/core/server';
 import { DataSourcePluginConfigType } from '../config';
 import { OpenSearchClientPool, configureClient } from './client';
 import { CryptographyClient } from './cryptography';
@@ -12,7 +17,8 @@ export interface DataSourceServiceSetup {
     dataSourceId: string,
     // this saved objects client is used to fetch data source on behalf of users, caller should pass scoped saved objects client
     savedObjects: SavedObjectsClientContract,
-    cryptographyClient: CryptographyClient
+    cryptographyClient: CryptographyClient,
+    auditor: Auditor
   ) => Promise<OpenSearchClient>;
 }
 export class DataSourceService {
@@ -28,9 +34,10 @@ export class DataSourceService {
     const getDataSourceClient = async (
       dataSourceId: string,
       savedObjects: SavedObjectsClientContract,
-      cryptographyClient: CryptographyClient
+      cryptographyClient: CryptographyClient,
+      auditor: Auditor
     ): Promise<OpenSearchClient> => {
-      return configureClient(
+      const openSearchClientPromise = configureClient(
         dataSourceId,
         savedObjects,
         cryptographyClient,
@@ -38,6 +45,9 @@ export class DataSourceService {
         config,
         this.logger
       );
+
+      auditor.add({ message: dataSourceId, type: 'opensearch.dataSourceClient.call.internalUser' });
+      return openSearchClientPromise;
     };
 
     return { getDataSourceClient };
