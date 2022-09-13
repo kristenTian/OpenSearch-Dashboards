@@ -12,7 +12,7 @@ const KEY_NAME_MAX_LENGTH: number = 100;
 const WRAPPING_KEY_SIZE: number = 32;
 
 export const configSchema = schema.object({
-  enabled: schema.boolean({ defaultValue: false }),
+  enabled: schema.boolean({ defaultValue: true }),
   encryption: schema.object({
     wrappingKeyName: schema.string({
       minLength: KEY_NAME_MIN_LENGTH,
